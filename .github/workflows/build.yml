@@ -1,0 +1,58 @@
+name: build-ipa
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+          brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      # Unsigned: the sideload tool on Windows signs it with the user's Apple ID at install time.
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project GaussiansCapture.xcodeproj \
+            -scheme GaussiansCapture \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package .ipa
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/GaussiansCapture.app Payload/
+          zip -qry GaussiansCapture.ipa Payload
+          ls -l GaussiansCapture.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GaussiansCapture-ipa
+          path: GaussiansCapture.ipa
+
+      # A rolling "latest" release, so Windows can fetch the .ipa without a token (public repo).
+      - name: Publish to the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest --title "latest build" --notes "Rolling build from main." --prerelease
+          gh release upload latest GaussiansCapture.ipa --clobber
