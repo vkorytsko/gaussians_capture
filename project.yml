@@ -5,7 +5,7 @@ options:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
 targets:
@@ -18,8 +18,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.vkorytsko.gaussianscapture
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
+        # Merged with the generated keys: file sharing, so takes show in Files and in iTunes.
+        INFOPLIST_FILE: Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: "Gaussians Capture"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UIRequiredDeviceCapabilities: arkit
-        INFOPLIST_KEY_NSCameraUsageDescription: "Captures frames and LiDAR depth to train a Gaussian-splat model on your PC."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Records camera frames, LiDAR depth and device poses."

@@ -1,51 +1,33 @@
-import ARKit
-import UIKit
 import SwiftUI
 
 @main
 struct GaussiansCaptureApp: App {
     var body: some Scene {
-        WindowGroup { StatusView() }
+        WindowGroup { CaptureScreen() }
     }
 }
 
-// P0 hello-world: proves the build, sign and install route, and reports what P1 depends on.
-struct StatusView: View {
-    private let info = Bundle.main.infoDictionary ?? [:]
-    // Persisted across re-signs: a re-sign that keeps this value kept the app's data too.
-    @AppStorage("firstLaunch") private var firstLaunch: Double = 0
+enum Theme {
+    static let ground = Color(hex: 0x15171A)
+    static let panel = Color(hex: 0x1E2226)
+    static let border = Color(hex: 0x2C3136)
+    static let text = Color(hex: 0xE9E7E2)
+    static let muted = Color(hex: 0xA9A9A2)
+    static let dim = Color(hex: 0x62666A)
+    static let teal = Color(hex: 0x4CC0B0)
+    static let amber = Color(hex: 0xDCA542)
+    static let red = Color(hex: 0xD9534F)
+    static let chipGround = Color(hex: 0x15171A, opacity: 0.8)
+    static let coachGround = Color(hex: 0xDCA542, opacity: 0.92)
+    static let errorGround = Color(hex: 0xD9534F, opacity: 0.92)
+}
 
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Build") {
-                    row("Version", info["CFBundleShortVersionString"] as? String ?? "?")
-                    row("CI build", info["CFBundleVersion"] as? String ?? "?")
-                    row("Bundle id", Bundle.main.bundleIdentifier ?? "?")
-                }
-                Section("Device") {
-                    row("iOS", UIDevice.current.systemVersion)
-                    row("First launch", firstLaunchText)
-                }
-                Section("ARKit (what P1 needs)") {
-                    row("World tracking", yesNo(ARWorldTrackingConfiguration.isSupported))
-                    row("LiDAR scene depth", yesNo(ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)))
-                    row("Smoothed depth", yesNo(ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth)))
-                    row("Mesh reconstruction", yesNo(ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)))
-                }
-            }
-            .navigationTitle("Gaussians Capture")
-        }
-        .onAppear { if firstLaunch == 0 { firstLaunch = Date().timeIntervalSince1970 } }
-    }
-
-    private var firstLaunchText: String {
-        firstLaunch == 0 ? "now" : Date(timeIntervalSince1970: firstLaunch).formatted(date: .abbreviated, time: .shortened)
-    }
-
-    private func yesNo(_ b: Bool) -> String { b ? "yes" : "no" }
-
-    private func row(_ k: String, _ v: String) -> some View {
-        HStack { Text(k); Spacer(); Text(v).foregroundStyle(.secondary).monospaced() }
+extension Color {
+    init(hex: UInt32, opacity: Double = 1) {
+        self.init(.sRGB,
+                  red: Double((hex >> 16) & 0xFF) / 255,
+                  green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255,
+                  opacity: opacity)
     }
 }

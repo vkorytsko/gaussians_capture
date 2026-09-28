@@ -21,7 +21,9 @@ jobs:
           brew install xcodegen
 
       - name: Generate project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          xcodebuild -list -project GaussiansCapture.xcodeproj
 
       # Unsigned: the sideload tool on Windows signs it with the user's Apple ID at install time.
       - name: Build
@@ -38,6 +40,7 @@ jobs:
 
       - name: Package .ipa
         run: |
+          rm -rf Payload
           mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/GaussiansCapture.app Payload/
           zip -qry GaussiansCapture.ipa Payload
@@ -45,7 +48,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: GaussiansCapture-ipa
+          name: ipa
           path: GaussiansCapture.ipa
 
       # A rolling "latest" release, so Windows can fetch the .ipa without a token (public repo).
