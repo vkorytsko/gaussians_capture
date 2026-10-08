@@ -1,9 +1,22 @@
+import Foundation
 import SwiftUI
 
 @main
 struct GaussiansCaptureApp: App {
     var body: some Scene {
         WindowGroup { CaptureScreen() }
+    }
+}
+
+enum FrameSources {
+    // A Release build constructs the camera source and nothing else.
+    static func make() -> FrameSource {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(ReplayFrameSource.launchArgument) {
+            return ReplayFrameSource()
+        }
+        #endif
+        return ARKitFrameSource()
     }
 }
 

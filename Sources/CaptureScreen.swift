@@ -1,6 +1,5 @@
-import ARKit
-import SceneKit
 import SwiftUI
+import UIKit
 
 struct CaptureScreen: View {
     @ObservedObject private var model = CaptureModel.shared
@@ -32,7 +31,7 @@ struct CaptureScreen: View {
     private var preview: some View {
         ZStack {
             if model.isSupported {
-                CameraPreview(session: model.engine.session)
+                SourcePreview(source: model.pipeline.source)
             } else {
                 Theme.panel
             }
@@ -136,18 +135,14 @@ struct CaptureScreen: View {
     }
 }
 
-struct CameraPreview: UIViewRepresentable {
-    let session: ARSession
+struct SourcePreview: UIViewRepresentable {
+    let source: FrameSource
 
-    func makeUIView(context: Context) -> ARSCNView {
-        let view = ARSCNView(frame: .zero)
-        view.session = session
-        view.scene = SCNScene()
-        view.automaticallyUpdatesLighting = false
-        return view
+    func makeUIView(context: Context) -> UIView {
+        source.makePreviewView()
     }
 
-    func updateUIView(_ uiView: ARSCNView, context: Context) {}
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 struct Chip<Content: View>: View {

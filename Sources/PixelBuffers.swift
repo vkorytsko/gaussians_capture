@@ -3,16 +3,21 @@ import CoreVideo
 import Foundation
 
 enum PixelBuffers {
-    // A private copy, so ARKit's pooled buffer goes back to the pool before the JPEG is encoded.
-    static func duplicate(_ source: CVPixelBuffer) -> CVPixelBuffer? {
-        let width = CVPixelBufferGetWidth(source)
-        let height = CVPixelBufferGetHeight(source)
+    // An IOSurface-backed buffer the app owns.
+    static func make(width: Int, height: Int, pixelFormat: OSType) -> CVPixelBuffer? {
         let attributes: [String: Any] = [kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()]
         var created: CVPixelBuffer?
-        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height,
-                                         CVPixelBufferGetPixelFormatType(source),
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, pixelFormat,
                                          attributes as CFDictionary, &created)
-        guard status == kCVReturnSuccess, let copy = created else { return nil }
+        guard status == kCVReturnSuccess else { return nil }
+        return created
+    }
+
+    // A private copy, so the camera's pooled buffer goes back to its pool before the JPEG is encoded.
+    static func duplicate(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let height = CVPixelBufferGetHeight(source)
+        guard let copy = make(width: CVPixelBufferGetWidth(source), height: height,
+                              pixelFormat: CVPixelBufferGetPixelFormatType(source)) else { return nil }
         // Carries the YCbCr matrix and colour tags that Core Image needs to convert to RGB.
         CVBufferPropagateAttachments(source, copy)
 

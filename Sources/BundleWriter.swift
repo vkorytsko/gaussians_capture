@@ -2,59 +2,46 @@ import CoreImage
 import CoreVideo
 import Foundation
 import ImageIO
+import UIKit
 
 // The capture bundle, directory container, major version 1.
-
-struct FrameFormat: Equatable {
-    let colorWidth: Int
-    let colorHeight: Int
-    let depthWidth: Int
-    let depthHeight: Int
-}
-
-// One kept frame, copied out of ARKit's buffers. Sensor-native (landscape) orientation throughout.
-struct FrameSnapshot {
-    let timestamp: Double
-    let format: FrameFormat
-    let color: CVPixelBuffer
-    let fx: Double
-    let fy: Double
-    let cx: Double
-    let cy: Double
-    let rotation: [Double]          // world-from-camera, row-major (pose.r)
-    let center: [Double]            // camera centre in world, metres (pose.c)
-    let depth: Data                 // f32le metres, depthWidth x depthHeight
-    let confidence: Data?           // u8 0/1/2, same size as depth
-    let trackingState: String
-    let trackingReason: String?
-    let exposureDurationS: Double
-    let exposureEvOffset: Double
-}
 
 struct TakeInfo {
     let startDate: Date
     let captureId: String
     let startUTC: String
     let fpsNominal: Double
+    let timestamps: String
     let deviceModel: String
     let deviceOS: String
     let producerVersion: String
 
+    // Main queue.
+    static func make(now: Date, fpsNominal: Double, timestamps: String) -> TakeInfo {
+        TakeInfo(startDate: now,
+                 captureId: UUID().uuidString.lowercased(),
+                 startUTC: ISO8601DateFormatter().string(from: now),
+                 fpsNominal: fpsNominal,
+                 timestamps: timestamps,
+                 deviceModel: machineIdentifier(),
+                 deviceOS: "iOS " + UIDevice.current.systemVersion,
+                 producerVersion: appVersion())
+    }
+
     // Writer queue only: the name is unique among the directories that queue has created.
-    static func newTakeDirectory(for date: Date) throws -> (name: String, url: URL) {
+    static func newTakeDirectory(for date: Date, in root: URL) throws -> (name: String, url: URL) {
         let fm = FileManager.default
-        let documents = try TakeStorage.documentsURL()
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let base = formatter.string(from: date)
         var name = base
         var suffix = 2
-        while fm.fileExists(atPath: documents.appendingPathComponent(name).path) {
+        while fm.fileExists(atPath: root.appendingPathComponent(name).path) {
             name = base + "-" + String(suffix)
             suffix += 1
         }
-        return (name, documents.appendingPathComponent(name, isDirectory: true))
+        return (name, root.appendingPathComponent(name, isDirectory: true))
     }
 
     // e.g. "iPhone16,1"; UIDevice.model only says "iPhone".
@@ -102,7 +89,7 @@ enum TakeStorage {
         String(format: "%06ld", index)
     }
 
-    // yyyyMMdd-HHmmss, optionally followed by -<n>. Nothing else under Documents is a take.
+    // yyyyMMdd-HHmmss, optionally followed by -<n>. Nothing else under the root is a take.
     static func isTakeName(_ name: String) -> Bool {
         let parts = name.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 2 || parts.count == 3,
@@ -122,14 +109,12 @@ enum TakeStorage {
     // (no records/000000.txt) is removed whole. In any other take, blobs with no header and .tmp
     // headers go; a take with record 0 committed is never removed, and a record whose <index>.txt
     // exists is never touched.
-    static func sweep() -> SweepResult {
+    static func sweep(root: URL) -> SweepResult {
         let fm = FileManager.default
         var result = SweepResult()
-        guard let documents = try? documentsURL(),
-              let entries = try? fm.contentsOfDirectory(atPath: documents.path)
-        else { return result }
+        guard let entries = try? fm.contentsOfDirectory(atPath: root.path) else { return result }
         for entry in entries where isTakeName(entry) {
-            let take = documents.appendingPathComponent(entry, isDirectory: true)
+            let take = root.appendingPathComponent(entry, isDirectory: true)
             var isDirectory: ObjCBool = false
             guard fm.fileExists(atPath: take.path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
             let records = take.appendingPathComponent("records", isDirectory: true)
@@ -215,48 +200,13 @@ struct WriterError: Error {
     init(_ message: String) { self.message = message }
 }
 
-// A header is ASCII key=value lines after the magic line, ended by one empty line that belongs to it.
-struct RecordHeader {
-    private var text = "# gd-capture-bundle\n"
-
-    mutating func add(_ key: String, _ value: String) {
-        text += key + "=" + asciiOnly(value) + "\n"
-    }
-
-    mutating func add(_ key: String, int value: Int) {
-        add(key, String(value))
-    }
-
-    mutating func add(_ key: String, real value: Double) {
-        add(key, formatReal(value))
-    }
-
-    mutating func add(_ key: String, reals values: [Double]) {
-        add(key, values.map { formatReal($0) }.joined(separator: " "))
-    }
-
-    var bytes: Data { Data((text + "\n").utf8) }
-}
-
-private func formatReal(_ x: Double) -> String {
-    String(format: "%.17g", x)
-}
-
-private func asciiOnly(_ s: String) -> String {
-    var out = ""
-    for u in s.unicodeScalars where u.value >= 0x20 && u.value <= 0x7E {
-        out.unicodeScalars.append(u)
-    }
-    return out
-}
-
 // Used on one serial queue only.
 final class BundleWriter {
-    static let formatVersion = "1.0"
     static let producerName = "gd-capture"
     static let jpegQuality = 0.9
 
     let info: TakeInfo
+    let root: URL
     private let gate: ForegroundGate
     private let context = CIContext()
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -268,16 +218,17 @@ final class BundleWriter {
     private(set) var discarded = 0
     private(set) var failure: String?
 
-    init(info: TakeInfo, gate: ForegroundGate) {
+    init(info: TakeInfo, gate: ForegroundGate, root: URL) {
         self.info = info
         self.gate = gate
+        self.root = root
     }
 
     // frame.index is assigned here, at write time, so a dropped frame never leaves a gap. Blobs first,
     // then the header to <index>.txt.tmp, renamed: the rename commits the record. After a failure, a
     // low-space stop or a discarded record nothing more is written, so the records on disk stay
     // contiguous from 0.
-    func write(_ frame: FrameSnapshot) {
+    func write(_ frame: CapturedFrame) {
         guard failure == nil else { return }
         if discarded > 0 {
             discarded += 1
@@ -342,7 +293,7 @@ final class BundleWriter {
     // ahead of every take never sees one in progress.
     private func recordsDirectory() throws -> URL {
         if let records = recordsURL { return records }
-        let place = try TakeInfo.newTakeDirectory(for: info.startDate)
+        let place = try TakeInfo.newTakeDirectory(for: info.startDate, in: root)
         directory = place.url
         name = place.name
         let records = place.url.appendingPathComponent("records", isDirectory: true)
@@ -358,62 +309,44 @@ final class BundleWriter {
     }
 
     // Written with record 0: the start timestamp and the nominal sizes are record 0's.
-    private func manifestHeader(first frame: FrameSnapshot) -> Data {
-        var h = RecordHeader()
-        h.add("bundle.version", BundleWriter.formatVersion)
-        h.add("record.kind", "manifest")
-        h.add("capture.id", info.captureId)
-        h.add("capture.start_utc", info.startUTC)
-        h.add("capture.start_timestamp_s", real: frame.timestamp)
-        h.add("capture.fps_nominal", real: info.fpsNominal)
-        h.add("capture.timestamps", "sensor")
-        h.add("device.model", info.deviceModel)
-        h.add("device.os", info.deviceOS)
-        h.add("producer.name", BundleWriter.producerName)
-        h.add("producer.version", info.producerVersion)
-        h.add("color.width", int: frame.format.colorWidth)
-        h.add("color.height", int: frame.format.colorHeight)
-        h.add("color.encoding", "jpeg")
-        h.add("depth.width", int: frame.format.depthWidth)
-        h.add("depth.height", int: frame.format.depthHeight)
-        h.add("intrinsics.reference_width", int: frame.format.colorWidth)
-        h.add("intrinsics.reference_height", int: frame.format.colorHeight)
-        h.add("pose.frame", "arkit")
-        return h.bytes
+    private func manifestHeader(first frame: CapturedFrame) -> Data {
+        BundleHeaders.manifest(ManifestFields(
+            captureId: info.captureId,
+            startUTC: info.startUTC,
+            startTimestampS: frame.timestamp,
+            fpsNominal: info.fpsNominal,
+            timestamps: info.timestamps,
+            deviceModel: info.deviceModel,
+            deviceOS: info.deviceOS,
+            producerName: BundleWriter.producerName,
+            producerVersion: info.producerVersion,
+            colorWidth: frame.format.colorWidth,
+            colorHeight: frame.format.colorHeight,
+            colorEncoding: "jpeg",
+            depthWidth: frame.format.depthWidth,
+            depthHeight: frame.format.depthHeight))
     }
 
-    private func frameHeader(_ frame: FrameSnapshot, index: Int, colorBytes: Int) -> Data {
-        var h = RecordHeader()
-        h.add("bundle.version", BundleWriter.formatVersion)
-        h.add("record.kind", "frame")
-        h.add("capture.id", info.captureId)
-        h.add("frame.index", int: index)
-        h.add("frame.timestamp_s", real: frame.timestamp)
-        h.add("color.width", int: frame.format.colorWidth)
-        h.add("color.height", int: frame.format.colorHeight)
-        h.add("color.encoding", "jpeg")
-        h.add("color.bytes", int: colorBytes)
-        h.add("intrinsics.fx", real: frame.fx)
-        h.add("intrinsics.fy", real: frame.fy)
-        h.add("intrinsics.cx", real: frame.cx)
-        h.add("intrinsics.cy", real: frame.cy)
-        h.add("pose.frame", "arkit")
-        h.add("pose.r", reals: frame.rotation)
-        h.add("pose.c", reals: frame.center)
-        h.add("depth.width", int: frame.format.depthWidth)
-        h.add("depth.height", int: frame.format.depthHeight)
-        h.add("depth.encoding", "f32le")
-        h.add("depth.bytes", int: frame.depth.count)
-        if let confidence = frame.confidence {
-            h.add("confidence.encoding", "u8")
-            h.add("confidence.bytes", int: confidence.count)
-        }
-        h.add("tracking.state", frame.trackingState)
-        if let reason = frame.trackingReason {
-            h.add("tracking.reason", reason)
-        }
-        h.add("exposure.duration_s", real: frame.exposureDurationS)
-        h.add("exposure.ev_offset", real: frame.exposureEvOffset)
-        return h.bytes
+    private func frameHeader(_ frame: CapturedFrame, index: Int, colorBytes: Int) -> Data {
+        BundleHeaders.frame(FrameHeaderFields(
+            captureId: info.captureId,
+            index: index,
+            timestampS: frame.timestamp,
+            colorWidth: frame.format.colorWidth,
+            colorHeight: frame.format.colorHeight,
+            colorEncoding: "jpeg",
+            colorBytes: colorBytes,
+            intrinsics: frame.intrinsics,
+            rotation: frame.rotation,
+            center: frame.center,
+            depthWidth: frame.format.depthWidth,
+            depthHeight: frame.format.depthHeight,
+            depthBytes: frame.depth.count,
+            confidenceBytes: frame.confidence?.count,
+            trackingState: frame.trackingState,
+            trackingReason: frame.trackingReason,
+            exposureDurationS: frame.exposureDurationS,
+            exposureEvOffset: frame.exposureEvOffset,
+            exposureIso: frame.exposureIso))
     }
 }

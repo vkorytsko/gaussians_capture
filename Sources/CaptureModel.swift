@@ -1,11 +1,11 @@
-import ARKit
 import Combine
+import CoreGraphics
 import SwiftUI
 import UIKit
 
-// The screen's state. Every method here runs on the main queue. One per process, like the engine, so
-// a scene recreated by the system finds the same take state.
-final class CaptureModel: ObservableObject {
+// The screen's state. Every method here runs on the main queue. One per process, like the pipeline,
+// so a scene recreated by the system finds the same take state.
+final class CaptureModel: ObservableObject, CaptureObserver {
     static let shared = CaptureModel()
 
     @Published private(set) var status = LiveStatus()
@@ -19,34 +19,37 @@ final class CaptureModel: ObservableObject {
     @Published private(set) var depthOverlay: CGImage? = nil
     @Published var showDepth = false {
         didSet {
-            engine.setOverlayEnabled(showDepth)
+            pipeline.source.setDepthOverlayEnabled(showDepth)
             if !showDepth { depthOverlay = nil }
         }
     }
 
     let isSupported: Bool
-    let engine = CaptureEngine.shared
-    let keptFps = CaptureEngine.keptFramesPerSecond
+    let pipeline: CapturePipeline
+    let keptFps = KeepRule.framesPerSecond
     private var currentTakeID: String? = nil
 
     var canRecord: Bool { isSupported && isRunning }
 
     private init() {
-        isSupported = ARWorldTrackingConfiguration.isSupported
-            && ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
-        engine.model = self
+        let root = (try? TakeStorage.documentsURL())
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent("Documents", isDirectory: true)
+        let pipeline = CapturePipeline(source: FrameSources.make(), root: root)
+        self.pipeline = pipeline
+        isSupported = pipeline.source.isAvailable
+        pipeline.observer = self
     }
 
     func resume() {
         guard isSupported, !isRunning else { return }
-        engine.run()
+        pipeline.source.start()
         isRunning = true
     }
 
     func suspend() {
         stopRecording()
         guard isRunning else { return }
-        engine.pause()
+        pipeline.source.stop()
         isRunning = false
     }
 
@@ -72,15 +75,8 @@ final class CaptureModel: ObservableObject {
             return
         }
         let now = Date()
-        let info = TakeInfo(startDate: now,
-                            captureId: UUID().uuidString.lowercased(),
-                            startUTC: ISO8601DateFormatter().string(from: now),
-                            fpsNominal: keptFps,
-                            deviceModel: TakeInfo.machineIdentifier(),
-                            deviceOS: "iOS " + UIDevice.current.systemVersion,
-                            producerVersion: TakeInfo.appVersion())
-        let writer = BundleWriter(info: info, gate: engine.foregroundGate)
-        currentTakeID = writer.info.captureId
+        let info = TakeInfo.make(now: now, fpsNominal: keptFps, timestamps: pipeline.source.timestampSource)
+        currentTakeID = info.captureId
         framesWritten = 0
         framesDropped = 0
         note = nil
@@ -88,7 +84,7 @@ final class CaptureModel: ObservableObject {
         takeStart = now
         isRecording = true
         UIApplication.shared.isIdleTimerDisabled = true
-        engine.beginTake(writer)
+        pipeline.beginTake(info)
     }
 
     private func stopRecording() {
@@ -97,10 +93,10 @@ final class CaptureModel: ObservableObject {
         takeStart = nil
         note = "Saving"
         UIApplication.shared.isIdleTimerDisabled = false
-        engine.endTake()
+        pipeline.endTake()
     }
 
-    // Called by the engine, on the main queue.
+    // CaptureObserver, on the main queue.
 
     func apply(_ newStatus: LiveStatus) {
         status = newStatus
@@ -162,6 +158,6 @@ final class CaptureModel: ObservableObject {
     func sessionFailed(_ message: String) {
         stopRecording()
         isRunning = false
-        errorText = "ARKit: " + message
+        errorText = "Camera: " + message
     }
 }
