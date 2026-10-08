@@ -8,6 +8,10 @@ settings:
     MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      ENABLE_TESTABILITY: YES
 targets:
   GaussiansCapture:
     type: application
@@ -26,3 +30,51 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UIRequiredDeviceCapabilities: arkit
         INFOPLIST_KEY_NSCameraUsageDescription: "Records camera frames, LiDAR depth and device poses."
+  GaussiansCaptureTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/Unit
+      - path: Tests/Fixtures
+        buildPhase: resources
+    dependencies:
+      - target: GaussiansCapture
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GaussiansCapture.app/GaussiansCapture"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  GaussiansCaptureUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/UI]
+    dependencies:
+      - target: GaussiansCapture
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GaussiansCapture
+schemes:
+  GaussiansCapture:
+    build:
+      targets:
+        GaussiansCapture: all
+        GaussiansCaptureTests: [test]
+        GaussiansCaptureUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      # The unit tests' host app plays synthetic frames, so no test run needs a camera.
+      commandLineArguments:
+        "--replay-frames": true
+      targets:
+        - GaussiansCaptureTests
+        - GaussiansCaptureUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
