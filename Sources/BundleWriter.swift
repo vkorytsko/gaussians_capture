@@ -200,16 +200,38 @@ struct WriterError: Error {
     init(_ message: String) { self.message = message }
 }
 
+// One per process, used on the writer queue only. A context's first encodes are slow, so it is made
+// once, warmed at launch, and reused by every take.
+final class JPEGEncoder {
+    static let quality = 0.9
+
+    private let context = CIContext()
+    private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+
+    func encode(_ buffer: CVPixelBuffer) -> Data? {
+        let options: [CIImageRepresentationOption: Any] = [
+            kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: JPEGEncoder.quality
+        ]
+        return context.jpegRepresentation(of: CIImage(cvPixelBuffer: buffer), colorSpace: colorSpace, options: options)
+    }
+
+    // One small encode down a frame's path, biplanar YCbCr to JPEG; the bytes are discarded. Like any
+    // encode, call it only through the foreground gate.
+    func warmUp() {
+        guard let buffer = PixelBuffers.make(width: 64, height: 48,
+                                             pixelFormat: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) else { return }
+        _ = encode(buffer)
+    }
+}
+
 // Used on one serial queue only.
 final class BundleWriter {
     static let producerName = "gd-capture"
-    static let jpegQuality = 0.9
 
     let info: TakeInfo
     let root: URL
     private let gate: ForegroundGate
-    private let context = CIContext()
-    private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    private let encoder: JPEGEncoder
     private var directory: URL?
     private var recordsURL: URL?
     private var name: String?
@@ -218,10 +240,11 @@ final class BundleWriter {
     private(set) var discarded = 0
     private(set) var failure: String?
 
-    init(info: TakeInfo, gate: ForegroundGate, root: URL) {
+    init(info: TakeInfo, gate: ForegroundGate, root: URL, encoder: JPEGEncoder) {
         self.info = info
         self.gate = gate
         self.root = root
+        self.encoder = encoder
     }
 
     // frame.index is assigned here, at write time, so a dropped frame never leaves a gap. Blobs first,
@@ -236,13 +259,9 @@ final class BundleWriter {
         }
         let index = framesWritten
         do {
-            let image = CIImage(cvPixelBuffer: frame.color)
-            let options: [CIImageRepresentationOption: Any] = [
-                kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: BundleWriter.jpegQuality
-            ]
             var encoded: Data? = nil
             let ran = gate.runIfOpen {
-                encoded = context.jpegRepresentation(of: image, colorSpace: colorSpace, options: options)
+                encoded = encoder.encode(frame.color)
             }
             guard ran else {
                 discarded = 1

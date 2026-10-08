@@ -54,6 +54,8 @@ final class CapturePipeline: FrameSink {
     let source: FrameSource
     let root: URL
     let foregroundGate = ForegroundGate()
+    // Writer queue only.
+    let encoder = JPEGEncoder()
     let writeQueue = DispatchQueue(label: "com.vkorytsko.gaussianscapture.writer", qos: .userInitiated)
     weak var observer: CaptureObserver?
 
@@ -65,12 +67,14 @@ final class CapturePipeline: FrameSink {
         self.root = root
         source.sink = self
 
-        // The first work on the writer queue, so it runs before any take can write.
+        // The first work on the writer queue, so it runs before any take can write. The warm-up goes
+        // through the foreground gate, so it never encodes in the background.
         writeQueue.async {
             let swept = TakeStorage.sweep(root: root)
             if swept.takesRemoved > 0 || swept.filesRemoved > 0 {
                 DispatchQueue.main.async { self.observer?.sweepFinished(swept) }
             }
+            _ = self.foregroundGate.runIfOpen { self.encoder.warmUp() }
         }
 
         // queue nil: the gate closes synchronously inside the transition to the background.
@@ -95,7 +99,7 @@ final class CapturePipeline: FrameSink {
     // Frames are kept from the next due one. The returned state is the take's, for inspection only.
     @discardableResult
     func beginTake(_ info: TakeInfo, poolCapacity: Int = CapturePipeline.maxPendingFrames) -> KeepState {
-        let writer = BundleWriter(info: info, gate: foregroundGate, root: root)
+        let writer = BundleWriter(info: info, gate: foregroundGate, root: root, encoder: encoder)
         let keeping = KeepState(pool: FramePool(capacity: poolCapacity))
         source.queue.async {
             self.take = TakeState(writer: writer)
