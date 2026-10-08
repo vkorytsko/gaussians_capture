@@ -131,7 +131,7 @@ jobs:
         run: |
           mkdir -p out/artifacts
           data="$HOME/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}/data"
-          for name in replay-take screens; do
+          for name in replay-take app-wire screens; do
             if [ ! -d "out/artifacts/$name" ]; then
               found=$(find "$data" -type d -path "*gc-artifacts/$name" 2>/dev/null | head -1)
               if [ -n "$found" ]; then cp -R "$found" "out/artifacts/$name"; fi
@@ -145,6 +145,14 @@ jobs:
         with:
           name: replay-take
           path: out/artifacts/replay-take
+          if-no-files-found: error
+
+      - name: Upload the wire recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-wire
+          path: out/artifacts/app-wire
           if-no-files-found: error
 
       - name: Upload the screenshots
@@ -234,6 +242,80 @@ jobs:
           fi
           if [ "$status" -eq 0 ]; then
             echo "::error::Plant NOT caught: the slow-writer test passed with an unbounded pool."
+            exit 1
+          fi
+          echo "::error::The plant never ran, or its failure line did not match: xcodebuild exit $status."
+          exit 2
+
+  # A planted fault the wire test must catch: a reader that skips a record. This job is green only
+  # when that test fails under the plant; red means the test cannot see a skipped record, or the plant
+  # never ran.
+  plant-skip-record:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          cat > "$RUNNER_TEMP/pick_simulator.py" <<'EOF'
+          import json, re, subprocess
+
+          def simctl(*args):
+              return json.loads(subprocess.check_output(["xcrun", "simctl", "list", *args, "--json"]))
+
+          def version(name):
+              m = re.search(r"iOS[- ](\d+)[-.](\d+)", name)
+              return (int(m.group(1)), int(m.group(2))) if m else None
+
+          devices = simctl("devices", "available")["devices"]
+          for runtime in sorted((k for k in devices if version(k)), key=version, reverse=True):
+              phones = [d for d in devices[runtime] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[0]["udid"])
+                  raise SystemExit
+          runtimes = [r for r in simctl("runtimes", "available")["runtimes"] if version(r["identifier"])]
+          types = [t for t in simctl("devicetypes")["devicetypes"] if t["name"].startswith("iPhone")]
+          if not runtimes or not types:
+              raise SystemExit("no iOS simulator runtime or iPhone device type on this runner")
+          runtimes.sort(key=lambda r: version(r["identifier"]))
+          udid = subprocess.check_output(["xcrun", "simctl", "create", "ci-iphone",
+                                          types[-1]["identifier"], runtimes[-1]["identifier"]])
+          print(udid.decode().strip())
+          EOF
+          UDID=$(python3 "$RUNNER_TEMP/pick_simulator.py")
+          echo "Simulator: $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Wire test with a reader that skips a record (must fail)
+        run: |
+          set +e
+          xcodebuild test \
+            -project GaussiansCapture.xcodeproj \
+            -scheme GaussiansCapture \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build \
+            -parallel-testing-enabled NO \
+            -only-testing:GaussiansCaptureTests/LinkWireTests/testPairCutAndResume \
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG PLANT_SKIP_RECORD' \
+            2>&1 | tee plant.log
+          status=${PIPESTATUS[0]}
+          if grep -qiE "test ?case .*testPairCutAndResume.*failed" plant.log; then
+            echo "::notice::Plant caught: the wire test failed with a reader that skips a record, as it must."
+            exit 0
+          fi
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Plant NOT caught: the wire test passed with a reader that skips a record."
             exit 1
           fi
           echo "::error::The plant never ran, or its failure line did not match: xcodebuild exit $status."

@@ -1,0 +1,151 @@
+# gd-capture-bundle
+link.version=1
+link.message=hello
+link.bytes=0
+phone.name=iPhone
+app.version=0.2.0+1
+pair.code=246813
+
+# gd-capture-bundle
+link.version=1
+link.message=hello
+link.bytes=0
+phone.name=iPhone
+app.version=0.2.0+1
+pair.token=00112233445566778899aabbccddeeff
+
+# gd-capture-bundle
+link.version=1
+link.message=welcome
+link.bytes=0
+pc.name=TEST-PC
+pair.token=00112233445566778899aabbccddeeff
+
+# gd-capture-bundle
+link.version=1
+link.message=welcome
+link.bytes=0
+pc.name=TEST-PC
+
+# gd-capture-bundle
+link.version=1
+link.message=refused
+link.bytes=0
+reason=code
+
+# gd-capture-bundle
+link.version=1
+link.message=refused
+link.bytes=0
+reason=pairing closed
+
+# gd-capture-bundle
+link.version=1
+link.message=refused
+link.bytes=0
+reason=version
+detail=link.version=2 is not this end's link.version=1
+
+# gd-capture-bundle
+link.version=1
+link.message=take.start
+link.bytes=61
+capture.id=6f9619ff-8b86-d011-b42d-00c04fc964ff
+
+# gd-capture-bundle
+bundle.version=1.0
+record.kind=manifest
+
+# gd-capture-bundle
+link.version=1
+link.message=take.accepted
+link.bytes=0
+have=-1
+
+# gd-capture-bundle
+link.version=1
+link.message=take.accepted
+link.bytes=0
+have=1
+
+# gd-capture-bundle
+link.version=1
+link.message=take.refused
+link.bytes=0
+reason=busy
+detail=a session is running
+
+# gd-capture-bundle
+link.version=1
+link.message=record
+link.bytes=100
+age_ms=37
+
+
+
+#
+18
+FM
+[b
+pw
+…Œ
+š¡
+¯¶
+ÄË
+Ùà
+îõ
+
+
+
+-4
+BI
+W^
+ls
+ˆ
+–
+«²
+ÀÇ
+ÕÜ
+êñ
+ÿ
+
+)0
+>E
+SZ
+ho
+}„
+’™
+§®
+# gd-capture-bundle
+link.version=1
+link.message=take.stop
+link.bytes=0
+last=2
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=1200
+splats=45678
+frames=3
+psnr_db=27.125
+loss=0.031250
+behind_s=0.412
+
+# gd-capture-bundle
+link.version=1
+link.message=thumbnail
+link.bytes=32
+iteration=1200
+
+ÿşıüûúùø÷öõôóòñğïîíìëêéèçæåäãâáà# gd-capture-bundle
+link.version=1
+link.message=ping
+link.bytes=0
+
+# gd-capture-bundle
+link.version=1
+link.message=pong
+link.bytes=0
+
