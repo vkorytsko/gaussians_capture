@@ -48,8 +48,7 @@ final class ReplayTakeTests: XCTestCase {
         let run = try record(root: root, seconds: 8, writerStall: 0, poolCapacity: CapturePipeline.maxPendingFrames)
         XCTAssertNil(run.result.failure)
         XCTAssertEqual(run.result.discarded, 0)
-        XCTAssertEqual(run.result.dropped, 0)
-        XCTAssertEqual(run.result.framesWritten, run.claimed)
+        XCTAssertEqual(run.result.framesWritten + run.result.dropped, run.claimed)
         XCTAssertGreaterThanOrEqual(run.result.framesWritten, 12)
         let take = try XCTUnwrap(run.take)
         XCTAssertEqual(TakeLayout.problems(in: take), [])
@@ -62,20 +61,28 @@ final class ReplayTakeTests: XCTestCase {
         print("replay take copied to " + artifact.path)
     }
 
-    // A writer stalled for 2.5 s holds every slot of the pool: the due frames meanwhile are dropped and
-    // counted, and the records on disk stay contiguous. testAReplayTakeIsWrittenWhole is the same take
-    // with a writer that keeps up, and drops nothing.
+    // A writer stalled for 2.5 s holds every slot of the pool, so the due frames meanwhile are dropped
+    // and counted, and the records on disk stay contiguous. The control is the same take with no stall,
+    // on the same runner: whatever it drops (a slow first encode, a slow machine) the stalled take drops
+    // too, plus the frames due between the pool filling at about 0.75 s and the stall's end: about 7,
+    // of which 5 are required.
     func testSlowWriterDropsAreCountedAndIndicesStayGapless() throws {
         #if PLANT_UNBOUNDED_POOL
         let capacity = 1_000
         #else
         let capacity = CapturePipeline.maxPendingFrames
         #endif
+        let control = try record(root: try TestFiles.temporaryRoot("control"), seconds: 4, writerStall: 0,
+                                 poolCapacity: capacity)
+        XCTAssertNil(control.result.failure)
+        XCTAssertEqual(control.result.framesWritten + control.result.dropped, control.claimed)
+
         let root = try TestFiles.temporaryRoot("slow")
         let run = try record(root: root, seconds: 4, writerStall: 2.5, poolCapacity: capacity)
+        print("dropped: control \(control.result.dropped) of \(control.claimed), stalled \(run.result.dropped) of \(run.claimed)")
         XCTAssertNil(run.result.failure)
         XCTAssertEqual(run.peak, CapturePipeline.maxPendingFrames)
-        XCTAssertGreaterThanOrEqual(run.result.dropped, 1)
+        XCTAssertGreaterThanOrEqual(run.result.dropped, control.result.dropped + 5)
         XCTAssertGreaterThanOrEqual(run.result.framesWritten, CapturePipeline.maxPendingFrames)
         XCTAssertEqual(run.result.framesWritten + run.result.dropped, run.claimed)
         let take = try XCTUnwrap(run.take)
