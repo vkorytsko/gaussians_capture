@@ -299,6 +299,11 @@ final class BundleWriter {
         }
     }
 
+    // The take's directory once a record is committed in it.
+    var takeDirectory: URL? {
+        framesWritten > 0 ? directory : nil
+    }
+
     func finish(dropped: Int) -> TakeResult {
         if framesWritten == 0, let directory = directory {
             try? FileManager.default.removeItem(at: directory)

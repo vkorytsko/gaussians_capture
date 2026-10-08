@@ -4,7 +4,10 @@ import SwiftUI
 @main
 struct GaussiansCaptureApp: App {
     var body: some Scene {
-        WindowGroup { CaptureScreen() }
+        WindowGroup {
+            CaptureScreen()
+                .onOpenURL { url in _ = LinkClient.shared.pair(url: url.absoluteString) }
+        }
     }
 }
 

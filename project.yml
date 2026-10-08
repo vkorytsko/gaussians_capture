@@ -22,14 +22,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.vkorytsko.gaussianscapture
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
-        # Merged with the generated keys: file sharing, so takes show in Files and in iTunes.
+        # Merged with the generated keys: file sharing, so takes show in Files and in iTunes; local network
+        # access and the Bonjour service the link browses; the pairing URL scheme.
         INFOPLIST_FILE: Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: "Gaussians Capture"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UIRequiredDeviceCapabilities: arkit
-        INFOPLIST_KEY_NSCameraUsageDescription: "Records camera frames, LiDAR depth and device poses."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Records camera frames, LiDAR depth and device poses, and scans the pairing code your PC shows."
   GaussiansCaptureTests:
     type: bundle.unit-test
     platform: iOS

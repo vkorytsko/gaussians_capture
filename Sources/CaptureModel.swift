@@ -38,16 +38,20 @@ final class CaptureModel: ObservableObject, CaptureObserver {
         self.pipeline = pipeline
         isSupported = pipeline.source.isAvailable
         pipeline.observer = self
+        pipeline.commitListener = LinkClient.shared
     }
 
     func resume() {
+        LinkClient.shared.setForeground(true)
         guard isSupported, !isRunning else { return }
         pipeline.source.start()
         isRunning = true
     }
 
+    // The app is in the background: the link closes too.
     func suspend() {
         stopRecording()
+        LinkClient.shared.setForeground(false)
         guard isRunning else { return }
         pipeline.source.stop()
         isRunning = false

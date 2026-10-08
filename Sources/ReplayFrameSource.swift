@@ -15,19 +15,24 @@ final class ReplayFrameSource: FrameSource {
     let queue = DispatchQueue(label: "com.vkorytsko.gaussianscapture.replay", qos: .userInteractive)
     let isAvailable = true
     let timestampSource = "synthesized"
-    let scene = SyntheticScene()
+    let scene: SyntheticScene
     weak var sink: FrameSink?
     var keeping: KeepState?
 
     // Everything below is touched on `queue` only.
     private let origin: Double
+    private let keepLimit: Int?
+    private var delivered = 0
     private var timer: DispatchSourceTimer?
     private var lastTick = -1
     private var lastPreview: Double? = nil
     private var lastStatus: LiveStatus? = nil
     private weak var preview: UIImageView?
 
-    init() {
+    // With `keepLimit`, frames stop being kept once that many have been handed on, as if the take ended.
+    init(scene: SyntheticScene = SyntheticScene(), keepLimit: Int? = nil) {
+        self.scene = scene
+        self.keepLimit = keepLimit
         origin = ProcessInfo.processInfo.systemUptime
     }
 
@@ -83,7 +88,7 @@ final class ReplayFrameSource: FrameSource {
             showPreview(frame)
         }
 
-        guard let keeping = keeping, keeping.claim(timestamp) else { return }
+        guard let keeping = keeping, keepLimit.map({ delivered < $0 }) ?? true, keeping.claim(timestamp) else { return }
         guard let slot = keeping.pool.borrow() else {
             sink?.frameSource(self, dropped: .poolEmpty)
             return
@@ -94,6 +99,7 @@ final class ReplayFrameSource: FrameSource {
             sink?.frameSource(self, dropped: .unusable)
             return
         }
+        delivered += 1
         sink?.frameSource(self, captured: captured)
     }
 
@@ -161,11 +167,24 @@ struct SyntheticScene {
         let center: [Double]
     }
 
-    let colorWidth = 320
-    let colorHeight = 240
-    let depthWidth = 256
-    let depthHeight = 192
-    let intrinsics = Intrinsics(fx: 260, fy: 260, cx: 160, cy: 120)
+    let colorWidth: Int
+    let colorHeight: Int
+    let depthWidth: Int
+    let depthHeight: Int
+    let intrinsics: Intrinsics
+
+    // Sizes keep 4:3; the focal length scales with the width, so every size sees the same view.
+    init(colorWidth: Int = 320, colorHeight: Int = 240, depthWidth: Int = 256, depthHeight: Int = 192) {
+        self.colorWidth = colorWidth
+        self.colorHeight = colorHeight
+        self.depthWidth = depthWidth
+        self.depthHeight = depthHeight
+        let f = 260 * Double(colorWidth) / 320
+        intrinsics = Intrinsics(fx: f, fy: f, cx: Double(colorWidth) / 2, cy: Double(colorHeight) / 2)
+    }
+
+    // For wire recordings, which should stay small.
+    static let small = SyntheticScene(colorWidth: 160, colorHeight: 120, depthWidth: 64, depthHeight: 48)
 
     let orbitRadius = 1.6
     let orbitHeight = 1.0

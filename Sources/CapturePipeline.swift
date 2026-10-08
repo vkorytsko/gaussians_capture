@@ -58,6 +58,8 @@ final class CapturePipeline: FrameSink {
     let encoder = JPEGEncoder()
     let writeQueue = DispatchQueue(label: "com.vkorytsko.gaussianscapture.writer", qos: .userInitiated)
     weak var observer: CaptureObserver?
+    // Told of each committed record and of each take's end, on the writer queue. Set once, at launch.
+    weak var commitListener: TakeCommitListener?
 
     private var take: TakeState?
     private var observers: [NSObjectProtocol] = []
@@ -121,7 +123,12 @@ final class CapturePipeline: FrameSink {
             self.take = nil
             let dropped = take.dropped
             self.writeQueue.async {
+                let directory = take.writer.takeDirectory
                 let result = take.writer.finish(dropped: dropped)
+                if let directory = directory, result.framesWritten > 0 {
+                    self.commitListener?.takeEnded(directory: directory, captureId: result.captureId,
+                                                   last: result.framesWritten - 1)
+                }
                 DispatchQueue.main.async {
                     self.observer?.takeEnded(result)
                     completion?(result)
@@ -146,7 +153,12 @@ final class CapturePipeline: FrameSink {
         take.format = frame.format
         let writer = take.writer
         writeQueue.async {
+            let before = writer.framesWritten
             writer.write(frame)
+            if writer.framesWritten > before, let directory = writer.takeDirectory {
+                self.commitListener?.takeCommitted(directory: directory, captureId: writer.info.captureId,
+                                                   index: writer.framesWritten - 1)
+            }
             frame.slot.release()
             let written = writer.framesWritten
             let failure = writer.failure
