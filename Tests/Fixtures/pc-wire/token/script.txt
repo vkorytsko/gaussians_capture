@@ -1,0 +1,4 @@
+wire-script 1
+1 phone hello
+1 pc refused
+1 end close pc

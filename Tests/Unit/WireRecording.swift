@@ -261,28 +261,8 @@ final class LoopbackPC {
         }
     }
 
-    // As the PC stores a record: header file, then each blob under its derived name.
     private func write(_ payload: Data, _ index: Int) -> Bool {
-        let bytes = [UInt8](payload)
-        guard case .success(let h) = LinkFraming.parseHeader(Array(bytes.prefix(LinkFraming.headerMaxBytes))) else { return false }
-        let records = received.appendingPathComponent("records", isDirectory: true)
-        let stem = TakeStorage.recordStem(index)
-        var parts: [(String, Int)] = [(".txt", h.byteCount)]
-        let color = h.value("color.encoding") == "png" ? ".color.png" : ".color.jpg"
-        for (suffix, key) in [(color, "color.bytes"), (".depth.f32", "depth.bytes"), (".conf.u8", "confidence.bytes")] {
-            if let n = h.value(key).flatMap({ Int($0) }) { parts.append((suffix, n)) }
-        }
-        var offset = 0
-        for (suffix, n) in parts {
-            guard offset + n <= bytes.count else { return false }
-            do {
-                try Data(bytes[offset..<(offset + n)]).write(to: records.appendingPathComponent(stem + suffix))
-            } catch {
-                return false
-            }
-            offset += n
-        }
-        return offset == bytes.count
+        writeStreamRecord(payload, index, into: received)
     }
 
     private func reply(_ m: LinkMessage, _ s: Session) {
@@ -320,4 +300,42 @@ func takeDifferences(_ a: URL, _ b: URL) -> [String] {
         if x == nil || x != y { out.append("differs: " + name) }
     }
     return out
+}
+
+// As the PC stores a record: the header file, then each blob under its derived name.
+func writeStreamRecord(_ payload: Data, _ index: Int, into take: URL) -> Bool {
+    let bytes = [UInt8](payload)
+    guard case .success(let h) = LinkFraming.parseHeader(Array(bytes.prefix(LinkFraming.headerMaxBytes))) else { return false }
+    let records = take.appendingPathComponent("records", isDirectory: true)
+    try? FileManager.default.createDirectory(at: records, withIntermediateDirectories: true)
+    let stem = TakeStorage.recordStem(index)
+    var parts: [(String, Int)] = [(".txt", h.byteCount)]
+    let color = h.value("color.encoding") == "png" ? ".color.png" : ".color.jpg"
+    for (suffix, key) in [(color, "color.bytes"), (".depth.f32", "depth.bytes"), (".conf.u8", "confidence.bytes")] {
+        if let n = h.value(key).flatMap({ Int($0) }) { parts.append((suffix, n)) }
+    }
+    var offset = 0
+    for (suffix, n) in parts {
+        guard offset + n <= bytes.count else { return false }
+        do {
+            try Data(bytes[offset..<(offset + n)]).write(to: records.appendingPathComponent(stem + suffix))
+        } catch {
+            return false
+        }
+        offset += n
+    }
+    return offset == bytes.count
+}
+
+extension XCTestCase {
+    func waitUntil(_ timeout: TimeInterval, _ what: String, _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("timed out waiting for " + what)
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+    }
 }

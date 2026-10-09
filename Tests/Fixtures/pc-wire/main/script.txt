@@ -1,0 +1,35 @@
+wire-script 1
+1 phone hello
+1 pc welcome
+1 phone take.start
+1 pc take.accepted
+1 phone record
+1 pc progress
+1 pc progress
+1 phone ping
+1 pc pong
+1 pc ping
+1 phone pong
+1 phone record
+1 pc progress
+1 pc progress
+1 pc progress
+1 pc progress
+1 end cut phone
+2 phone hello
+2 pc welcome
+2 phone take.start
+2 pc take.accepted
+2 phone record
+2 phone take.stop
+2 pc progress
+2 pc progress
+2 pc progress
+2 phone ping
+2 pc ping
+2 pc progress
+2 phone pong
+2 pc thumbnail
+2 pc pong
+2 pc progress
+2 end close pc

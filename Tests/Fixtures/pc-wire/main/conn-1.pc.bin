@@ -1,0 +1,79 @@
+# gd-capture-bundle
+link.version=1
+link.message=welcome
+link.bytes=0
+pc.name=TEST-PC
+pair.token=00112233445566778899aabbccddeeff
+
+# gd-capture-bundle
+link.version=1
+link.message=take.accepted
+link.bytes=0
+have=-1
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=0
+splats=0
+frames=0
+loss=0.000000
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=0
+splats=0
+frames=0
+loss=0.000000
+
+# gd-capture-bundle
+link.version=1
+link.message=pong
+link.bytes=0
+
+# gd-capture-bundle
+link.version=1
+link.message=ping
+link.bytes=0
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=0
+splats=0
+frames=0
+loss=0.000000
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=0
+splats=0
+frames=0
+loss=0.000000
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=146
+splats=1016
+frames=2
+psnr_db=10.746
+loss=0.077842
+
+# gd-capture-bundle
+link.version=1
+link.message=progress
+link.bytes=0
+iteration=417
+splats=1016
+frames=2
+psnr_db=10.746
+loss=0.044631
+

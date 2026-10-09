@@ -38,6 +38,12 @@ targets:
       - path: Tests/Unit
       - path: Tests/Fixtures
         buildPhase: resources
+        excludes:
+          - "pc-wire/**"
+      # A folder reference: the recordings share file names, so their directories must survive.
+      - path: Tests/Fixtures/pc-wire
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: GaussiansCapture
     settings:
@@ -48,7 +54,11 @@ targets:
   GaussiansCaptureUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [Tests/UI]
+    sources:
+      - path: Tests/UI
+      - path: Tests/Fixtures/pc-wire
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: GaussiansCapture
     settings:

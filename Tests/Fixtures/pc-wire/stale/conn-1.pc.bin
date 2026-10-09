@@ -1,0 +1,7 @@
+# gd-capture-bundle
+link.version=1
+link.message=refused
+link.bytes=0
+reason=version
+detail=link.version=0 is not this end's link.version=1
+

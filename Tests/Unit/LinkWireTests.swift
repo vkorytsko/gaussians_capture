@@ -21,17 +21,6 @@ final class LinkWireTests: XCTestCase {
     static let token = "00112233445566778899aabbccddeeff"
     static let pcName = "TEST-PC"
 
-    func waitUntil(_ timeout: TimeInterval, _ what: String, _ condition: () -> Bool) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() > deadline {
-                XCTFail("timed out waiting for " + what)
-                return
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
-    }
-
     // A three-record synthetic take, paired by code with the PC, cut inside record 2, resumed by token
     // from have=1, and stopped. The recording of both sides, with the take, is the CI artifact app-wire.
     func testPairCutAndResume() throws {
@@ -63,34 +52,7 @@ final class LinkWireTests: XCTestCase {
 
         // The take is written whole before the app comes to the foreground, so the stream is the same
         // on every run.
-        let takes = root.appendingPathComponent("takes", isDirectory: true)
-        try fm.createDirectory(at: takes, withIntermediateDirectories: true)
-        let source = ReplayFrameSource(scene: .small, keepLimit: 3)
-        let pipeline = CapturePipeline(source: source, root: takes)
-        pipeline.commitListener = client
-        pipeline.writeQueue.sync {}
-        source.start()
-        pipeline.beginTake(TakeInfo.make(now: Date(), fpsNominal: KeepRule.framesPerSecond, timestamps: source.timestampSource))
-        waitUntil(15, "three records") {
-            let names = (try? fm.contentsOfDirectory(atPath: takes.path)) ?? []
-            return names.contains { name in
-                let records = takes.appendingPathComponent(name).appendingPathComponent("records")
-                let headers = ((try? fm.contentsOfDirectory(atPath: records.path)) ?? []).filter { $0.hasSuffix(".txt") }
-                return headers.count == 3
-            }
-        }
-        var ended: TakeResult?
-        let finished = expectation(description: "take finished")
-        pipeline.endTake { result in
-            ended = result
-            finished.fulfill()
-        }
-        wait(for: [finished], timeout: 30)
-        source.stop()
-        let result = try XCTUnwrap(ended)
-        XCTAssertEqual(result.framesWritten, 3)
-        let takeName = try XCTUnwrap(result.name)
-        let take = takes.appendingPathComponent(takeName, isDirectory: true)
+        let take = try writeThreeRecordTake(root: root, listener: client)
 
         let stopped = expectation(description: "take.stop received")
         pc.onTakeStop = { stopped.fulfill() }
@@ -147,14 +109,41 @@ final class LinkWireTests: XCTestCase {
             XCTAssertNotNil(WireScript.problem(bad), bad.joined(separator: " / "))
         }
     }
+}
 
-    // Hook for the PC's recording: what the PC sends a phone, recorded by the PC on a synthetic take, is
-    // copied here as Tests/Fixtures/pc-wire/ and played by a scripted PC. Nothing to play until then.
-    func testAgainstThePCRecording() throws {
-        guard Bundle(for: LinkWireTests.self).url(forResource: "script", withExtension: "txt", subdirectory: "pc-wire") != nil else {
-            throw XCTSkip("no PC wire recording in the test bundle yet")
+extension XCTestCase {
+    // A three-record take of the small synthetic scene under <root>/takes, its commits told to
+    // `listener`. Returns the take's directory.
+    func writeThreeRecordTake(root: URL, listener: TakeCommitListener) throws -> URL {
+        let fm = FileManager.default
+        let takes = root.appendingPathComponent("takes", isDirectory: true)
+        try fm.createDirectory(at: takes, withIntermediateDirectories: true)
+        let source = ReplayFrameSource(scene: .small, keepLimit: 3)
+        let pipeline = CapturePipeline(source: source, root: takes)
+        pipeline.commitListener = listener
+        pipeline.writeQueue.sync {}
+        source.start()
+        pipeline.beginTake(TakeInfo.make(now: Date(), fpsNominal: KeepRule.framesPerSecond, timestamps: source.timestampSource))
+        waitUntil(15, "three records") {
+            let names = (try? fm.contentsOfDirectory(atPath: takes.path)) ?? []
+            return names.contains { name in
+                let records = takes.appendingPathComponent(name).appendingPathComponent("records")
+                let headers = ((try? fm.contentsOfDirectory(atPath: records.path)) ?? []).filter { $0.hasSuffix(".txt") }
+                return headers.count == 3
+            }
         }
-        XCTFail("a PC wire recording is present, and no test plays it yet")
+        var ended: TakeResult?
+        let finished = expectation(description: "take finished")
+        pipeline.endTake { result in
+            ended = result
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 30)
+        source.stop()
+        let result = try XCTUnwrap(ended)
+        XCTAssertEqual(result.framesWritten, 3)
+        let name = try XCTUnwrap(result.name)
+        return takes.appendingPathComponent(name, isDirectory: true)
     }
 }
 #endif

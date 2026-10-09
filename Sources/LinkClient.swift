@@ -19,6 +19,9 @@ struct LinkStatus: Equatable {
     }
 
     var phase = Phase.unpaired
+    var paired = false              // a token is held; until then the app shows Connect
+    var refusalDetail: String? = nil // the PC's detail with a refusal, such as both versions
+    var lastDrop: String? = nil      // why the link last dropped
     var pcName: String? = nil
     var address: String? = nil
     var connectedSince: Double? = nil
@@ -59,6 +62,8 @@ final class LinkClient: TakeCommitListener {
     private var foreground = false
     private var userDisconnected = false
     private var refusal: String?
+    private var refusalDetail: String?
+    private var lastDrop: String?
     private var everConnected = false
 
     private var transport: LinkTransport?
@@ -133,6 +138,8 @@ final class LinkClient: TakeCommitListener {
             self.target = target
             self.code = code
             self.refusal = nil
+            self.refusalDetail = nil
+            self.busySince = nil
             self.userDisconnected = false
             self.everConnected = false
             self.reconnectDelay = LinkTiming.reconnectFirst
@@ -161,6 +168,7 @@ final class LinkClient: TakeCommitListener {
         queue.async {
             self.userDisconnected = false
             self.refusal = nil
+            self.refusalDetail = nil
             self.reconnectDelay = LinkTiming.reconnectFirst
             self.dial()
         }
@@ -177,6 +185,8 @@ final class LinkClient: TakeCommitListener {
             self.target = nil
             self.reconnectAt = nil
             self.refusal = nil
+            self.refusalDetail = nil
+            self.busySince = nil
         }
     }
 
@@ -300,9 +310,11 @@ final class LinkClient: TakeCommitListener {
             lastPingAt = now
             reconnectDelay = LinkTiming.reconnectFirst
             busySince = nil
+            refusalDetail = nil
             pump()
         case .refused:
             let reason = m.value("reason") ?? ""
+            refusalDetail = m.value("detail")
             if reason == "busy" {
                 // The PC still holds a dropped link of this phone: hello again soon, for a while.
                 closeTransport()
@@ -456,6 +468,7 @@ final class LinkClient: TakeCommitListener {
     }
 
     private func drop(_ why: String) {
+        lastDrop = why
         closeTransport()
         scheduleReconnect()
     }
@@ -501,6 +514,8 @@ final class LinkClient: TakeCommitListener {
             s.phase = .unpaired
         } else if let r = refusal {
             s.phase = .refused(r)
+        } else if busySince != nil && !welcomed {
+            s.phase = .refused("busy")
         } else if userDisconnected || !foreground {
             s.phase = .disconnected
         } else if welcomed {
@@ -510,6 +525,9 @@ final class LinkClient: TakeCommitListener {
         } else {
             s.phase = everConnected ? .reconnecting : .connecting
         }
+        s.paired = target != nil && token != nil
+        s.refusalDetail = refusalDetail
+        s.lastDrop = lastDrop
         s.pcName = target == nil ? nil : store.pcName
         s.address = target?.text
         s.connectedSince = connectedSince
