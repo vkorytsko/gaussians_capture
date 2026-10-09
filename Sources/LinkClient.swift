@@ -31,6 +31,9 @@ struct LinkStatus: Equatable {
     var waiting = 0                 // records not yet held by the PC, across this process's takes
     var takeRefused: String? = nil  // why the PC refused the take; it is offered again while connected
     var behindS: Double? = nil
+    var progress: LinkMessage? = nil    // the PC's last progress, as received
+    var thumbnail: LinkMessage? = nil   // the PC's last thumbnail: its iteration, and a JPEG
+    var thumbnailAt: Double? = nil      // when it arrived, on the link's clock
 }
 
 // Main queue.
@@ -94,6 +97,7 @@ final class LinkClient: TakeCommitListener {
     private var behindS: Double?
     private(set) var lastProgress: LinkMessage?
     private(set) var lastThumbnail: LinkMessage?
+    private var thumbnailAt: Double?
 
     private var published: LinkStatus?
     private var publishedAt = -Double.infinity
@@ -140,6 +144,7 @@ final class LinkClient: TakeCommitListener {
             self.refusal = nil
             self.refusalDetail = nil
             self.busySince = nil
+            self.forgetTraining()
             self.userDisconnected = false
             self.everConnected = false
             self.reconnectDelay = LinkTiming.reconnectFirst
@@ -187,6 +192,7 @@ final class LinkClient: TakeCommitListener {
             self.refusal = nil
             self.refusalDetail = nil
             self.busySince = nil
+            self.forgetTraining()
         }
     }
 
@@ -363,6 +369,7 @@ final class LinkClient: TakeCommitListener {
             behindS = m.value("behind_s").flatMap { Double($0) }
         case .thumbnail:
             lastThumbnail = m
+            thumbnailAt = now
         default:
             drop("\(m.type.rawValue) is not a PC's message")
         }
@@ -460,6 +467,14 @@ final class LinkClient: TakeCommitListener {
         publish(now)
     }
 
+    // What the last PC reported of its training; a new or forgotten PC starts from nothing.
+    private func forgetTraining() {
+        lastProgress = nil
+        lastThumbnail = nil
+        thumbnailAt = nil
+        behindS = nil
+    }
+
     private func sendPing() {
         send(LinkMessage(.ping))
         pingsSent += 1
@@ -539,6 +554,9 @@ final class LinkClient: TakeCommitListener {
         s.waiting = takes.reduce(0) { $0 + $1.waiting }
         s.takeRefused = takeRefused
         s.behindS = behindS
+        s.progress = lastProgress
+        s.thumbnail = lastThumbnail
+        s.thumbnailAt = thumbnailAt
         return s
     }
 

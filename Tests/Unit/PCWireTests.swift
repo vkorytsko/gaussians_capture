@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import Security
+import UIKit
 import XCTest
 @testable import GaussiansCapture
 
@@ -304,6 +305,62 @@ final class PCWireTests: XCTestCase {
         XCTAssertEqual(PairingURL.parse(qr), PairingTarget(host: "127.0.0.1", port: 7420, code: "246813"))
         // The failing case: the same URL with a five-digit code.
         XCTAssertNil(PairingURL.parse(qr.replacingOccurrences(of: "code=246813", with: "code=24681")))
+    }
+
+    // Every figure the Training tab shows is the recorded progress's own text, and its image is the
+    // recorded thumbnail's JPEG, byte for byte.
+    func testTheTrainingTabShowsTheRecordedProgressAndThumbnail() throws {
+        let run = try runMain()
+        defer { run.pc.stop() }
+        let main = try PCRecording.load("main")
+        let messages = try XCTUnwrap(main.messages(2)).map { $0.message }
+        let progress = try XCTUnwrap(messages.last(where: { $0.type == .progress }))
+        let thumbnail = try XCTUnwrap(messages.last(where: { $0.type == .thumbnail }))
+        let s = status(run.client)
+
+        // runMain disconnects at the end: the last figures stay, dimmed.
+        XCTAssertEqual(TrainingText.state(s), .down)
+        let shown = TrainingText.figures(s.progress)
+        XCTAssertEqual(shown, [
+            TrainingText.Figure(label: "iteration", value: try XCTUnwrap(progress.value("iteration"))),
+            TrainingText.Figure(label: "splats", value: try XCTUnwrap(progress.value("splats"))),
+            TrainingText.Figure(label: "frames trained on", value: try XCTUnwrap(progress.value("frames"))),
+            TrainingText.Figure(label: "held-out PSNR", value: try XCTUnwrap(progress.value("psnr_db")) + " dB"),
+            TrainingText.Figure(label: "loss", value: try XCTUnwrap(progress.value("loss"))),
+        ])
+        let shownImage = try XCTUnwrap(s.thumbnail?.payload)
+        XCTAssertEqual(shownImage, thumbnail.payload)
+        XCTAssertNotNil(UIImage(data: shownImage))
+        let shownThumbnail = try XCTUnwrap(s.thumbnail)
+        let iteration = try XCTUnwrap(thumbnail.value("iteration"))
+        XCTAssertEqual(TrainingText.caption(shownThumbnail, arrivedAt: 100, now: 103.9),
+                       "the PC's render \u{00B7} iter " + iteration + " \u{00B7} 3 s ago")
+
+        // The failing cases: the take's first progress, before any held-out PSNR, shows other figures
+        // and a dash; one byte changed in the image is not the recorded JPEG.
+        let early = try XCTUnwrap(try XCTUnwrap(main.messages(1)).map { $0.message }.first(where: { $0.type == .progress }))
+        let earlyShown = TrainingText.figures(early)
+        XCTAssertNotEqual(earlyShown, shown)
+        XCTAssertEqual(earlyShown[3].value, TrainingText.missing)
+        var damaged = thumbnail.payload
+        damaged[damaged.startIndex + damaged.count / 2] ^= 0xFF
+        XCTAssertNotEqual(shownImage, damaged)
+    }
+
+    func testTheTrainingTabsStates() {
+        var s = LinkStatus()
+        XCTAssertEqual(TrainingText.state(s), .unpaired)
+        s.paired = true
+        s.phase = .connected
+        XCTAssertEqual(TrainingText.state(s), .waiting)
+        XCTAssertEqual(TrainingText.figures(nil).map { $0.value }, Array(repeating: TrainingText.missing, count: 5))
+        s.progress = LinkMessage(.progress, [("iteration", "12"), ("splats", "340"), ("frames", "3"), ("loss", "0.500000")])
+        XCTAssertEqual(TrainingText.state(s), .live)
+        s.phase = .reconnecting
+        XCTAssertEqual(TrainingText.state(s), .down)
+        s.paired = false
+        XCTAssertEqual(TrainingText.state(s), .unpaired)
+        XCTAssertEqual(TrainingText.figures(s.progress).map { $0.value }, ["12", "340", "3", TrainingText.missing, "0.500000"])
     }
 }
 #endif

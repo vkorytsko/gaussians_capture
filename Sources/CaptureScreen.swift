@@ -70,6 +70,26 @@ struct CaptureScreen: View {
                 Banner(text: error, ground: Theme.errorGround)
             }
             Spacer(minLength: 0)
+            if let image = link.thumbnailImage {
+                HStack {
+                    Spacer()
+                    // The PC's latest render; opens Training.
+                    Button {
+                        AppRouter.shared.tab = .training
+                    } label: {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 72, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border, lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("capture-thumbnail")
+                }
+            }
             strip
         }
         .padding(12)

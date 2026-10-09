@@ -7,14 +7,21 @@ final class LinkModel: ObservableObject, LinkObserver {
     static let shared = LinkModel()
 
     @Published private(set) var status: LinkStatus
+    // The last thumbnail, decoded once when it arrives.
+    @Published private(set) var thumbnailImage: UIImage?
 
     private init() {
         let client = LinkClient.shared
-        status = client.queue.sync { client.status() }
+        let first = client.queue.sync { client.status() }
+        status = first
+        thumbnailImage = first.thumbnail.flatMap { UIImage(data: $0.payload) }
         client.observer = self
     }
 
     func linkChanged(_ status: LinkStatus) {
+        if status.thumbnail != self.status.thumbnail {
+            thumbnailImage = status.thumbnail.flatMap { UIImage(data: $0.payload) }
+        }
         self.status = status
     }
 
@@ -25,25 +32,35 @@ final class LinkModel: ObservableObject, LinkObserver {
 }
 
 enum AppTab: Hashable {
-    case capture, pc
+    case capture, training, pc
 }
 
-// Two tabs, Capture and PC. An unpaired app opens on the PC tab, which shows Connect; a paired one
-// opens on Capture.
+// The selected tab. Main queue only. An unpaired app opens on the PC tab, which shows Connect; a
+// paired one opens on Capture.
+final class AppRouter: ObservableObject {
+    static let shared = AppRouter()
+
+    @Published var tab: AppTab
+
+    private init() {
+        tab = LinkModel.shared.status.paired ? .capture : .pc
+    }
+}
+
+// Three tabs: Capture, Training and PC.
 struct RootView: View {
     @ObservedObject private var link = LinkModel.shared
+    @ObservedObject private var router = AppRouter.shared
     @Environment(\.scenePhase) private var scenePhase
-    @State private var tab: AppTab
-
-    init() {
-        _tab = State(initialValue: LinkModel.shared.status.paired ? .capture : .pc)
-    }
 
     var body: some View {
-        TabView(selection: $tab) {
+        TabView(selection: $router.tab) {
             CaptureScreen()
                 .tabItem { Label("Capture", systemImage: "camera") }
                 .tag(AppTab.capture)
+            TrainingScreen()
+                .tabItem { Label("Training", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(AppTab.training)
             PCScreen()
                 .tabItem { Label("PC", systemImage: "desktopcomputer") }
                 .tag(AppTab.pc)
@@ -52,7 +69,7 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .onAppear { CaptureModel.shared.resume() }
         .onChange(of: link.status.paired) { _, paired in
-            if paired { tab = .capture }
+            if paired { router.tab = .capture }
         }
         .onChange(of: scenePhase) { _, phase in
             let model = CaptureModel.shared

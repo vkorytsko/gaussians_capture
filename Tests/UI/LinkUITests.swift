@@ -35,20 +35,23 @@ enum MessageSplitter {
 }
 
 // A PC for screenshots, answering with the PC's recorded bytes: a welcome (or, refusing, the
-// recorded version refusal), take.accepted for a take, a pong for each ping, and a progress with its
-// behind_s every half second.
+// recorded version refusal), take.accepted for a take and a pong for each ping. While live it also
+// sends a progress with its behind_s every half second, and a thumbnail every 3 s; quiet, it trains
+// nothing yet.
 final class UITestPC {
     enum Mode {
-        case welcome, refuse
+        case live, quiet, refuse
     }
 
     private let queue = DispatchQueue(label: "com.vkorytsko.gaussianscapture.uitests.pc")
     private var listener: NWListener?
-    private var mode = Mode.welcome
+    private var mode = Mode.live
+    private var liveTicks = 0
     private let welcome: Data
     private let accepted: Data
     private let pong: Data
     private let progress: Data
+    private let thumbnail: Data
     private let refused: Data
 
     init() throws {
@@ -61,6 +64,7 @@ final class UITestPC {
         progress = try XCTUnwrap(main2.first(where: {
             $0.name == "progress" && String(decoding: $0.bytes, as: UTF8.self).contains("behind_s=")
         })).bytes
+        thumbnail = try XCTUnwrap(main2.first(where: { $0.name == "thumbnail" })).bytes
         refused = try Data(contentsOf: dir.appendingPathComponent("stale/conn-1.pc.bin"))
     }
 
@@ -135,8 +139,7 @@ final class UITestPC {
             link.connection.send(content: welcome, completion: .contentProcessed { _ in })
             let timer = DispatchSource.makeTimerSource(queue: queue)
             timer.schedule(deadline: .now() + 0.5, repeating: 0.5)
-            let progress = self.progress
-            timer.setEventHandler { link.connection.send(content: progress, completion: .contentProcessed { _ in }) }
+            timer.setEventHandler { [weak self] in self?.tick(link) }
             timer.resume()
             link.timer = timer
         case "take.start":
@@ -146,6 +149,15 @@ final class UITestPC {
         default:
             break
         }
+    }
+
+    private func tick(_ link: Link) {
+        guard mode == .live else { return }
+        if liveTicks % 6 == 0 {
+            link.connection.send(content: thumbnail, completion: .contentProcessed { _ in })
+        }
+        liveTicks += 1
+        link.connection.send(content: progress, completion: .contentProcessed { _ in })
     }
 
     private func close(_ link: Link) {
@@ -211,6 +223,63 @@ final class LinkUITests: XCTestCase {
         connect.tap()
         XCTAssertTrue(app.staticTexts["Refused: versions differ"].waitForExistence(timeout: 20))
         save(name: "link-pc-refused")
+    }
+
+    // Screenshots of every state of the Training tab, and of Capture with the PC's render.
+    func testTheTrainingTab() throws {
+        let pc = try UITestPC()
+        pc.setMode(.quiet)
+        let port = try pc.start()
+        defer { pc.stop() }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["--replay-frames", "--forget-pc"]
+        app.launch()
+
+        let trainingTab = app.tabBars.buttons["Training"]
+        XCTAssertTrue(trainingTab.waitForExistence(timeout: 60))
+        trainingTab.tap()
+        XCTAssertTrue(app.staticTexts["Pair with a PC in the PC tab to see its training here."].waitForExistence(timeout: 10))
+        save(name: "training-unpaired")
+
+        app.tabBars.buttons["PC"].tap()
+        let proceed = app.buttons["Continue"]
+        if proceed.waitForExistence(timeout: 10) { proceed.tap() }
+        app.buttons["Enter an address by hand"].tap()
+        let field = app.textFields["address"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText("127.0.0.1:\(port)\n")
+        for key in ["2", "4", "6", "8", "1", "3"] {
+            app.buttons[key].tap()
+        }
+        XCTAssertTrue(app.staticTexts["link-chip"].waitForExistence(timeout: 30))
+
+        trainingTab.tap()
+        XCTAssertTrue(app.staticTexts["Waiting for the PC to start training"].waitForExistence(timeout: 10))
+        save(name: "training-waiting")
+
+        pc.setMode(.live)
+        XCTAssertTrue(app.staticTexts["training-caption"].waitForExistence(timeout: 20))
+        let iteration = app.staticTexts["figure-iteration"]
+        let received = expectation(for: NSPredicate(format: "label != %@", "\u{2014}"), evaluatedWith: iteration)
+        wait(for: [received], timeout: 10)
+        save(name: "training-live")
+
+        app.tabBars.buttons["Capture"].tap()
+        let thumbnail = app.buttons["capture-thumbnail"]
+        XCTAssertTrue(thumbnail.waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1)
+        save(name: "capture-thumbnail")
+        thumbnail.tap()
+        XCTAssertTrue(app.staticTexts["training-caption"].waitForExistence(timeout: 10))
+
+        app.tabBars.buttons["PC"].tap()
+        app.buttons["Disconnect"].tap()
+        XCTAssertTrue(app.buttons["Connect"].waitForExistence(timeout: 10))
+        trainingTab.tap()
+        XCTAssertTrue(app.staticTexts["Disconnected"].waitForExistence(timeout: 10))
+        save(name: "training-down")
     }
 
     // Kept in the result bundle, and written as PNG under GC_ARTIFACT_DIR/screens when it is set.
