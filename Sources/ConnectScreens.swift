@@ -221,7 +221,7 @@ struct CodeEntryScreen: View {
                 HStack(spacing: 10) {
                     ForEach(row, id: \.self) { key in
                         if key.isEmpty {
-                            Color.clear.frame(maxWidth: .infinity, minHeight: 52)
+                            Color.clear.frame(maxWidth: .infinity).frame(height: 52)
                         } else {
                             Button {
                                 press(key)
@@ -229,7 +229,8 @@ struct CodeEntryScreen: View {
                                 Text(key)
                                     .font(.system(size: 24, weight: .medium))
                                     .foregroundColor(Theme.text)
-                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 52)
                                     .background(Theme.panel, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             }
                             .buttonStyle(.plain)

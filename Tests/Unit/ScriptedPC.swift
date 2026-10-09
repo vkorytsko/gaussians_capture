@@ -281,7 +281,7 @@ final class ScriptedPC {
         s.ended = true
         observedByConnection[s.number]?.endedAt = ScriptedPC.now()
         observedByConnection[s.number]?.endedBy = side
-        s.connection.cancel()
+        closeAfterSends(s.connection)
         onEnded?(s.number)
     }
 }

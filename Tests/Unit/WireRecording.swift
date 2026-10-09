@@ -275,9 +275,16 @@ final class LoopbackPC {
         guard !s.ended else { return }
         s.ended = true
         recorder.end(s.number, how, side)
-        s.connection.cancel()
+        closeAfterSends(s.connection)
         onConnectionEnded?(s.number)
     }
+}
+
+// Ends the connection after every send already queued on it. A cancel alone may drop a reply not yet
+// handed to the network, and the peer then sees the close without it.
+func closeAfterSends(_ connection: NWConnection) {
+    connection.send(content: nil, contentContext: .finalMessage, isComplete: true,
+                    completion: .contentProcessed { _ in connection.cancel() })
 }
 
 // The files of two take directories that differ: missing on one side, or not byte-identical.
