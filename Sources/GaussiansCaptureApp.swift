@@ -3,9 +3,18 @@ import SwiftUI
 
 @main
 struct GaussiansCaptureApp: App {
+    init() {
+        #if DEBUG
+        // Debug builds only: start unpaired, for screenshots and tests.
+        if ProcessInfo.processInfo.arguments.contains("--forget-pc") {
+            LinkClient.shared.forget()
+        }
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            CaptureScreen()
+            RootView()
                 .onOpenURL { url in _ = LinkClient.shared.pair(url: url.absoluteString) }
         }
     }
@@ -36,6 +45,14 @@ enum Theme {
     static let chipGround = Color(hex: 0x15171A, opacity: 0.8)
     static let coachGround = Color(hex: 0xDCA542, opacity: 0.92)
     static let errorGround = Color(hex: 0xD9534F, opacity: 0.92)
+
+    static func tone(_ tone: LinkText.Tone) -> Color {
+        switch tone {
+        case .good: return teal
+        case .waiting: return amber
+        case .bad: return red
+        }
+    }
 }
 
 extension Color {

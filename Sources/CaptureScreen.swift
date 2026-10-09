@@ -3,7 +3,7 @@ import UIKit
 
 struct CaptureScreen: View {
     @ObservedObject private var model = CaptureModel.shared
-    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var link = LinkModel.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,16 +16,6 @@ struct CaptureScreen: View {
         .background { Theme.ground.ignoresSafeArea() }
         .preferredColorScheme(.dark)
         .onAppear { model.resume() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                model.resume()
-            } else {
-                model.leftActive()
-                if phase == .background {
-                    model.suspend()
-                }
-            }
-        }
     }
 
     private var preview: some View {
@@ -60,6 +50,14 @@ struct CaptureScreen: View {
                     Text(leftText).lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                if let chip = LinkText.chip(link.status) {
+                    Chip {
+                        Dot(color: Theme.tone(chip.tone))
+                        Text(chip.text)
+                            .lineLimit(1)
+                            .accessibilityIdentifier("link-chip")
+                    }
+                }
                 Chip {
                     Dot(color: model.isRecording ? Theme.red : Theme.dim)
                     ElapsedText(start: model.takeStart)
@@ -79,7 +77,11 @@ struct CaptureScreen: View {
 
     private var strip: some View {
         HStack(spacing: 0) {
-            StripItem(label: "frames", value: String(model.framesWritten), color: Theme.text)
+            if link.status.paired {
+                StripItem(label: "sent", value: String(max(0, model.framesWritten - link.status.waiting)), color: Theme.text)
+            } else {
+                StripItem(label: "frames", value: String(model.framesWritten), color: Theme.text)
+            }
             Spacer(minLength: 6)
             StripItem(label: "tracking", value: model.status.tracking, color: trackingColor)
             Spacer(minLength: 6)

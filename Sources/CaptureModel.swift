@@ -57,6 +57,16 @@ final class CaptureModel: ObservableObject, CaptureObserver {
         isRunning = false
     }
 
+    // The QR scanner needs the camera the frame source holds. False while a take records.
+    func releaseCameraForScanner() -> Bool {
+        guard !isRecording else { return false }
+        if isRunning {
+            pipeline.source.stop()
+            isRunning = false
+        }
+        return true
+    }
+
     // Any phase other than .active: no more frames are kept, and the take ends at the records already
     // queued.
     func leftActive() {

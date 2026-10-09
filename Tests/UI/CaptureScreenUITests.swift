@@ -8,11 +8,15 @@ final class CaptureScreenUITests: XCTestCase {
 
     func testCaptureScreenWithReplayFrames() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--replay-frames"]
+        app.launchArguments = ["--replay-frames", "--forget-pc"]
         app.launch()
+        // Unpaired, the app opens on the PC tab.
+        let captureTab = app.tabBars.buttons["Capture"]
+        XCTAssertTrue(captureTab.waitForExistence(timeout: 60))
+        captureTab.tap()
 
         let record = app.buttons["Record"]
-        XCTAssertTrue(record.waitForExistence(timeout: 60))
+        XCTAssertTrue(record.waitForExistence(timeout: 30))
         XCTAssertTrue(record.isEnabled)
         Thread.sleep(forTimeInterval: 3)
         save(XCUIScreen.main.screenshot(), name: "capture-ready")
